@@ -1,13 +1,15 @@
 from setuptools import setup, find_packages
 
-with open("requirements.txt") as f:
-    requirements = f.read().splitlines()
+REQUIRED_PACKAGES = [
+    "spacy<=3.7.2",
+    # "numpy", # spaCy already depends on numpy
+]
 
 setup(
     name="spacy_space",
     version="0.0.0-alpha01",
     packages=find_packages(),
-    install_requires=requirements,
+    install_requires=REQUIRED_PACKAGES,
     description="spacy_space : add adequate spaces in-between single sentences via spaCy",
     license="MIT",
     keywords=[
