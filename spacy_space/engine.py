@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+import sys
 from typing import Any, Dict, Union
 
 import spacy
@@ -12,7 +13,7 @@ from .entities import DependencyEdge
 from .resources import _SUPPORTED_LANGUAGES, _LANG_ALIASES, _SIZE_ALIASES
 
 
-class LangEngine:
+class SplitEngine:
     def __init__(
         self,
         resource_lang_code: str,
@@ -23,9 +24,9 @@ class LangEngine:
         """Loads a spaCy model for sentence intra-splitting.
 
         resource_lang_code (str): language code mapped to spaCy package name.
-            Refer to `LangEngine.get_available_lang_codes()` for proper language codes.
+            Refer to `SplitEngine.get_available_lang_codes()` for proper language codes.
         resource_size_code (str): model size code mapped to spaCy package name.
-            Refer to `LangEngine.get_available_size_codes(lang_code)` for proper size codes.
+            Refer to `SplitEngine.get_available_size_codes(lang_code)` for proper size codes.
         vocab (Vocab): `vocab` parameter for `spacy.load()` function.
             A Vocab object. If True, a vocab is created.
         config (Dict[str, Any] / Config): `config` parameter for `spacy.load()` function.
@@ -54,8 +55,9 @@ class LangEngine:
         except OSError:
             # package not yet downloaded.
             import subprocess
-            cmd = f"python -m spacy download {resource_name}"
-            subprocess.run(cmd, shell=True, check=True)
+            python_executable = sys.executable
+            cmd = f"{python_executable} -m spacy download {resource_name}"
+            subprocess.run(cmd, shell=True, check=True) # if error occurs, download manually.
 
             # try again
             self.nlp_engine = spacy.load(
@@ -166,11 +168,22 @@ class LangEngine:
     
 
     def to_sentences(self):
+        """Converts the loaded document into a list of sentences.
+
+        RETURNS (List[str]): List of sentences in the document.
+        """
         self.assert_doc_loaded()
         return deepcopy(self.__sentences)
 
 
     def to_chunks(self, num_chunk:int=None, len_chunk:int=None):
+        """Converts the loaded document into chunks based on either number or length.
+
+        num_chunk (int): Number of chunks to create.
+        len_chunk (int): Maximum length of each chunk.
+
+        RETURNS (List[str]): List of chunks.
+        """
         self.assert_doc_loaded()
         assert (num_chunk is not None) or (len_chunk is not None), \
             "Either `num_chunk` param or `len_chunk` param must be given."
@@ -180,6 +193,12 @@ class LangEngine:
             return self.to_chunks_by_len(len_chunk)
 
     def to_chunks_by_num(self, num_chunk:int):
+        """Converts the loaded document into chunks based on the given number.
+
+        num_chunk (int): Number of chunks to create.
+
+        RETURNS (List[str]): List of chunks.
+        """
         self.assert_doc_loaded()
         assert num_chunk > 0, "Valid `num_chunk` param must be given."
 
@@ -187,11 +206,12 @@ class LangEngine:
         for token_values, edges, valid_token_indices, subtree_indices in zip(
             self.__token_values, self.__edges, self.__valid_token_indices, self.__subtree_indices
         ):
+            # Early stopping if there are fewer tokens than `num_chunk`.
             if len(token_values) <= num_chunk:
                 for t in token_values: chunks.append(t)
                 continue
 
-            this_sent_subtree_indices = [deepcopy(valid_token_indices)]
+            this_sent_subtree_indices = [deepcopy(valid_token_indices)]  # sentence subtree indices memory
             for i in range(num_chunk-1):
                 edge = edges[i]
                 this_sent_subtree_indices.append(deepcopy(subtree_indices[edge.child_index]))
@@ -199,18 +219,24 @@ class LangEngine:
             indices = list()
             condition = deepcopy(valid_token_indices)
             while this_sent_subtree_indices:
-                this_chunk_subtree_indices = this_sent_subtree_indices.pop()
-                this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)
-                if True in this_chunk_subtree_indices:
+                this_chunk_subtree_indices = this_sent_subtree_indices.pop()  # last subtree in, first out
+                this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)  # check for already used parts of subtree
+                if True in this_chunk_subtree_indices:  # if valid subtree indices,
                     indices.append(sorted(np.where(this_chunk_subtree_indices)[0]))
-                condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)
-            indices = sorted(indices)
+                condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)  # update condition on used parts of subtree
+            indices = sorted(indices)  # final subtree indices
             for ids in indices:
                 chunks.append(self.__token_array_to_chunk(token_values[ids]))
         
         return chunks
 
     def to_chunks_by_len(self, len_chunk:int):
+        """Converts the loaded document into chunks based on the given length.
+
+        len_chunk (int): Maximum length of each chunk.
+
+        RETURNS (List[str]): List of chunks.
+        """
         self.assert_doc_loaded()
         assert len_chunk > 0, "Valid `len_chunk` param must be given."
 
@@ -218,6 +244,7 @@ class LangEngine:
         for token_values, edges, valid_token_indices, subtree_indices in zip(
             self.__token_values, self.__edges, self.__valid_token_indices, self.__subtree_indices
         ):
+            # Early stopping if the sentence has already shorter length than `len_chunk`.
             if len(self.__token_array_to_chunk(token_values)) <= len_chunk:
                 chunks.append(self.__token_array_to_chunk(token_values))
                 continue
@@ -225,7 +252,7 @@ class LangEngine:
             i = 0
             while i < len(edges):
                 ok = True
-                this_sent_subtree_indices = [deepcopy(valid_token_indices)]
+                this_sent_subtree_indices = [deepcopy(valid_token_indices)]  # sentence subtree indices memory
                 for j in range(i+1):
                     edge = edges[j]
                     this_sent_subtree_indices.append(deepcopy(subtree_indices[edge.child_index]))
@@ -233,25 +260,27 @@ class LangEngine:
                 indices = list()
                 condition = deepcopy(valid_token_indices)
                 while this_sent_subtree_indices:
-                    this_chunk_subtree_indices = this_sent_subtree_indices.pop()
-                    this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)
-                    if True in this_chunk_subtree_indices:
+                    this_chunk_subtree_indices = this_sent_subtree_indices.pop()  # last subtree in, first out
+                    this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)  # check for already used parts of subtree
+                    if True in this_chunk_subtree_indices:  # if valid subtree indices,
                         indices.append(sorted(np.where(this_chunk_subtree_indices)[0]))
                         if len(self.__token_array_to_chunk(token_values[indices[-1]])) > len_chunk:
+                            # if this chunk does not meet the requirements,
                             ok = False
-                            break
-                    condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)
+                            break  # start over
+                    condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)  # update condition on used parts of subtree
                 
-                if not ok: i += 1; continue
+                if not ok: i += 1; continue  # start over
                 else: break
             
             if ok:
-                indices = sorted(indices)
+                indices = sorted(indices)  # final subtree indices
                 for ids in indices:
                     t = self.__token_array_to_chunk(token_values[ids])
                     if t:
                         chunks.append(t)
             else:
+                # if failed to meet the conditions, even when whole edges were deleted,
                 for t in token_values:
                     if t: chunks.append(t)
         
@@ -259,6 +288,12 @@ class LangEngine:
 
             
     def __is_special_token(self, token: Token):
+        """Check if a given spaCy token is a special character.
+
+        token (Token): A spaCy token.
+
+        RETURNS (bool): True if the token is a special character, False otherwise.
+        """
         return (
             token.is_bracket
             or token.is_currency
@@ -270,10 +305,25 @@ class LangEngine:
         )
     
     def __token_array_to_chunk(self, token_array: np.ndarray):
+        """Converts an array of spaCy tokens into a chunk string.
+
+        token_array (np.ndarray): An array of spaCy tokens.
+
+        RETURNS (str): Chunk string.
+        """
         return ' '.join(token_array).replace("  ", ' ')
 
 
     def get_resource_name(self, lang_code, size_code):
+        """Gets the spaCy model name based on language and size codes.
+
+        lang_code (str): Language code.
+            Refer to `SplitEngine.get_available_lang_codes()` for available language codes.
+        size_code (str): Model size code.
+            Refer to `SplitEngine.get_available_size_codes(lang_code)` for available size codes.
+
+        RETURNS (str): SpaCy model name.
+        """
         try:
             if lang_code in (): self.assert_lang_code(lang_code)
             model_code = _SUPPORTED_LANGUAGES[lang_code][size_code]
@@ -282,25 +332,52 @@ class LangEngine:
             self.assert_size_code(lang_code, size_code)
     
     def assert_lang_code(self, lang_code):
+        """Asserts that the provided language code is valid.
+
+        lang_code (str): Language code.
+
+        RAISES (AssertionError): If the language code is not valid.
+        """
         available_lang_codes = self.get_available_lang_codes()
         assert lang_code in available_lang_codes, \
             f"'{lang_code}' is not an available language code. " \
-            "Refer to `LangEngine.get_available_lang_codes()` for proper language codes."
+            "Refer to `SplitEngine.get_available_lang_codes()` for proper language codes."
     
     def assert_size_code(self, lang_code, size_code):
+        """Asserts that the provided language code is valid.
+
+        lang_code (str): Language code.
+        size_code (str): Model size code.
+
+        RAISES (AssertionError): If the size code is not valid for the language.
+        """
         available_size_codes = self.get_available_size_codes(lang_code)
         assert size_code in available_size_codes, \
             f"'{size_code}' is not an available size code " \
             f"among the available size codes {available_size_codes} for '{lang_code}' language."
 
     def get_available_lang_codes(self):
+        """Gets a list of available language codes.
+
+        RETURNS (List[str]): List of available language codes.
+        """
         return [ k for k, v in _SUPPORTED_LANGUAGES.items if len(v)>0 ]
     
     def get_available_size_codes(self, lang_code):
+        """Gets a list of available size codes for the given language.
+
+        lang_code (str): Language code.
+
+        RETURNS (List[str]): List of available size codes.
+        """
         try: return [ k for k, _ in _SUPPORTED_LANGUAGES[lang_code].items ]
         except: self.assert_lang_code(lang_code)
     
     def assert_doc_loaded(self):
+        """Asserts that a document is loaded into the engine.
+
+        RAISES (AssertionError): If no document is loaded.
+        """
         assert self.__document, \
             f"Document is not loaded into engine. " \
-            "Please load some documents via `LangEngine.load_document(text:str)`."
+            "Please load some documents via `SplitEngine.load_document(text:str)`."
