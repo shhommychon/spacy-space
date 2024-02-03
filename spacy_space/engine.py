@@ -169,6 +169,94 @@ class LangEngine:
         self.assert_doc_loaded()
         return deepcopy(self.__sentences)
 
+
+    def to_chunks(self, num_chunk:int=None, len_chunk:int=None):
+        self.assert_doc_loaded()
+        assert (num_chunk is not None) or (len_chunk is not None), \
+            "Either `num_chunk` param or `len_chunk` param must be given."
+        if len_chunk is None:
+            return self.to_chunks_by_num(num_chunk)
+        if num_chunk is None:
+            return self.to_chunks_by_len(len_chunk)
+
+    def to_chunks_by_num(self, num_chunk:int):
+        self.assert_doc_loaded()
+        assert num_chunk > 0, "Valid `num_chunk` param must be given."
+
+        chunks = list()
+        for token_values, edges, valid_token_indices, subtree_indices in zip(
+            self.__token_values, self.__edges, self.__valid_token_indices, self.__subtree_indices
+        ):
+            if len(token_values) <= num_chunk:
+                for t in token_values: chunks.append(t)
+                continue
+
+            this_sent_subtree_indices = [deepcopy(valid_token_indices)]
+            for i in range(num_chunk-1):
+                edge = edges[i]
+                this_sent_subtree_indices.append(deepcopy(subtree_indices[edge.child_index]))
+            
+            indices = list()
+            condition = deepcopy(valid_token_indices)
+            while this_sent_subtree_indices:
+                this_chunk_subtree_indices = this_sent_subtree_indices.pop()
+                this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)
+                if True in this_chunk_subtree_indices:
+                    indices.append(sorted(np.where(this_chunk_subtree_indices)[0]))
+                condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)
+            indices = sorted(indices)
+            for ids in indices:
+                chunks.append(self.__token_array_to_chunk(token_values[ids]))
+        
+        return chunks
+
+    def to_chunks_by_len(self, len_chunk:int):
+        self.assert_doc_loaded()
+        assert len_chunk > 0, "Valid `len_chunk` param must be given."
+
+        chunks = list()
+        for token_values, edges, valid_token_indices, subtree_indices in zip(
+            self.__token_values, self.__edges, self.__valid_token_indices, self.__subtree_indices
+        ):
+            if len(self.__token_array_to_chunk(token_values)) <= len_chunk:
+                chunks.append(self.__token_array_to_chunk(token_values))
+                continue
+
+            i = 0
+            while i < len(edges):
+                ok = True
+                this_sent_subtree_indices = [deepcopy(valid_token_indices)]
+                for j in range(i+1):
+                    edge = edges[j]
+                    this_sent_subtree_indices.append(deepcopy(subtree_indices[edge.child_index]))
+                
+                indices = list()
+                condition = deepcopy(valid_token_indices)
+                while this_sent_subtree_indices:
+                    this_chunk_subtree_indices = this_sent_subtree_indices.pop()
+                    this_chunk_subtree_indices = np.logical_and(this_chunk_subtree_indices, condition)
+                    if True in this_chunk_subtree_indices:
+                        indices.append(sorted(np.where(this_chunk_subtree_indices)[0]))
+                        if len(self.__token_array_to_chunk(token_values[indices[-1]])) > len_chunk:
+                            ok = False
+                            break
+                    condition = np.logical_and(np.logical_not(this_chunk_subtree_indices), condition)
+                
+                if not ok: i += 1; continue
+                else: break
+            
+            if ok:
+                indices = sorted(indices)
+                for ids in indices:
+                    t = self.__token_array_to_chunk(token_values[ids])
+                    if t:
+                        chunks.append(t)
+            else:
+                for t in token_values:
+                    if t: chunks.append(t)
+        
+        return chunks
+
             
     def __is_special_token(self, token: Token):
         return (
@@ -180,6 +268,9 @@ class LangEngine:
             or token.is_right_punct
             or token.is_space
         )
+    
+    def __token_array_to_chunk(self, token_array: np.ndarray):
+        return ' '.join(token_array).replace("  ", ' ')
 
 
     def get_resource_name(self, lang_code, size_code):
