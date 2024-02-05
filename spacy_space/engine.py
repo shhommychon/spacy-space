@@ -356,22 +356,24 @@ class SplitEngine:
             f"'{size_code}' is not an available size code " \
             f"among the available size codes {available_size_codes} for '{lang_code}' language."
 
-    def get_available_lang_codes(self):
+    @classmethod
+    def get_available_lang_codes(cls):
         """Gets a list of available language codes.
 
         RETURNS (List[str]): List of available language codes.
         """
-        return [ k for k, v in _SUPPORTED_LANGUAGES.items if len(v)>0 ]
+        return [ k for k, v in _SUPPORTED_LANGUAGES.items() if len(v)>0 ]
     
-    def get_available_size_codes(self, lang_code):
+    @classmethod
+    def get_available_size_codes(cls, lang_code):
         """Gets a list of available size codes for the given language.
 
         lang_code (str): Language code.
 
         RETURNS (List[str]): List of available size codes.
         """
-        try: return [ k for k, _ in _SUPPORTED_LANGUAGES[lang_code].items ]
-        except: self.assert_lang_code(lang_code)
+        try: return [ k for k, _ in _SUPPORTED_LANGUAGES[lang_code].items() ]
+        except: cls.assert_lang_code(lang_code)
     
     def assert_doc_loaded(self):
         """Asserts that a document is loaded into the engine.

@@ -7,7 +7,7 @@ REQUIRED_PACKAGES = [
 
 setup(
     name="spacy_space",
-    version="0.0.0-alpha01",
+    version="0.0.0-alpha02",
     packages=find_packages(),
     install_requires=REQUIRED_PACKAGES,
     description="spacy_space : add adequate spaces in-between single sentences via spaCy",
