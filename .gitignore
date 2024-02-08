@@ -1,7 +1,7 @@
 ### custom gitignore ###
-
-
-
+test/
+*.ipynb
+**/*.ipynb
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,venv,jupyternotebooks,visualstudiocode,linux,macos,windows
