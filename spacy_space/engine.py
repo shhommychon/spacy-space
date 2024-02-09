@@ -75,7 +75,7 @@ class SplitEngine:
 
         text (str): non-splitted string of a single document.
         """
-        self.__document = text
+        self.__document = text.strip().replace("\n", " ")
         doc = self.nlp_engine(self.__document)
 
         self.__sentences = list() # ①
