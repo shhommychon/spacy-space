@@ -7,7 +7,7 @@ REQUIRED_PACKAGES = [
 
 setup(
     name="spacy_space",
-    version="0.0.0-alpha02",
+    version="0.0.0-alpha03",
     packages=find_packages(),
     install_requires=REQUIRED_PACKAGES,
     description="spacy_space : add adequate spaces in-between single sentences via spaCy",
@@ -22,7 +22,7 @@ setup(
         "text analytics",
     ],
     classifiers=[
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Topic :: Text Processing",
