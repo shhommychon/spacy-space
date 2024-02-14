@@ -10,6 +10,7 @@ from spacy.vocab import Vocab
 from thinc.api import Config
 
 from .entities import DependencyEdge
+from .preprocess import preprocess
 from .resources import _SUPPORTED_LANGUAGES, _LANG_ALIASES, _SIZE_ALIASES
 
 
@@ -75,7 +76,7 @@ class SplitEngine:
 
         text (str): non-splitted string of a single document.
         """
-        self.__document = text
+        self.__document = preprocess(text)
         doc = self.nlp_engine(self.__document)
 
         self.__sentences = list() # ①
